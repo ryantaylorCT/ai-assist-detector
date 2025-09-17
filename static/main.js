@@ -1,50 +1,63 @@
-document.addEventListener('DOMContentLoaded', function() {
-  const startButton = document.getElementById('start-btn');
-  const stopButton = document.getElementById('stop-btn');
-  const analyzeButton = document.getElementById('analyze-btn');
-  const resultDiv = document.getElementById('result');
-  let mediaRecorder;
-  let audioChunks = [];
+let mediaRecorder;
+let audioChunks = [];
 
-  startButton.onclick = async () => {
+const startBtn = document.getElementById('start');
+const stopBtn = document.getElementById('stop');
+const analyzeBtn = document.getElementById('analyze');
+const resultPre = document.getElementById('result');
+
+startBtn.onclick = async () => {
     audioChunks = [];
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Your browser does not support audio recording');
+        return;
+    }
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
+        };
+        mediaRecorder.start();
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        analyzeBtn.disabled = true;
+        resultPre.textContent = '';
+    } catch (err) {
+        console.error(err);
+        alert('Could not start recording: ' + err.message);
+    }
+};
 
-    mediaRecorder.ondataavailable = (e) => {
-      audioChunks.push(e.data);
-    };
-    mediaRecorder.start();
-    startButton.disabled = true;
-    stopButton.disabled = false;
-    analyzeButton.disabled = true;
-  };
+stopBtn.onclick = () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        analyzeBtn.disabled = false;
+    }
+};
 
-  stopButton.onclick = () => {
-    mediaRecorder.stop();
-    mediaRecorder.onstop = () => {
-      startButton.disabled = false;
-      stopButton.disabled = true;
-      analyzeButton.disabled = false;
-    };
-  };
-
-  analyzeButton.onclick = async () => {
+analyzeBtn.onclick = async () => {
+    if (audioChunks.length === 0) {
+        return;
+    }
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
     const formData = new FormData();
     formData.append('file', audioBlob, 'recording.webm');
-
-    resultDiv.textContent = 'Analyzing...';
-
+    resultPre.textContent = 'Analyzing...';
     try {
-      const response = await fetch('/analyze', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await response.json();
-      resultDiv.textContent = JSON.stringify(data, null, 2);
-    } catch (error) {
-      resultDiv.textContent = 'Error analyzing audio';
+        const response = await fetch('/analyze', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+        resultPre.textContent = JSON.stringify(data, null, 2);
+        analyzeBtn.disabled = true;
+    } catch (err) {
+        console.error(err);
+        resultPre.textContent = 'Error analyzing audio: ' + err.message;
     }
-  };
-});
+};
